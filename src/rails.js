@@ -88,7 +88,7 @@
     },
 
     // Default confirm dialog, may be overridden with custom confirm dialog in $.rails.confirm
-    confirm: function(message) {
+    confirm: function(message, element) {
       return confirm(message);
     },
 
@@ -295,19 +295,43 @@
       return false. The `confirm:complete` event is fired whether or not the user answered true or false to the dialog.
    */
     allowAction: function(element) {
-      var message = element.data('confirm'),
-          answer = false, callback;
-      if (!message) { return true; }
-
-      if (rails.fire(element, 'confirm')) {
-        try {
-          answer = rails.confirm(message);
-        } catch (e) {
-          (console.error || console.log).call(console, e.stack || e);
-        }
-        callback = rails.fire(element, 'confirm:complete', [answer]);
+      var message = element.data('confirm');
+      if (!message) {
+        return true;
       }
-      return answer && callback;
+
+      if (!rails.fire(element, 'confirm')) {
+        return false;
+      }
+
+      var answer = rails.confirm(message, element);
+      if (typeof answer === 'boolean') {
+        return answer;
+      } else if (answer && typeof answer.then === 'function') {
+        answer.then(function(result) {
+          if (result) {
+            element.removeData('confirm'); // Avoid re-confirmation
+            rails.fire(element, 'confirm:complete', [result]);
+
+            // Determine the element type and call the corresponding method
+            if (element.is('form')) {
+              rails.submitForm(element);
+            } else if (element.is('a[data-remote="true"]')) {
+              rails.handleRemote(element);
+            } else if (element.is('a[data-method]')) {
+              rails.handleMethod(element);
+            } else if (element.is('a')) {
+              window.location.href = element.attr('href');
+            } else {
+              // For other elements
+              element.click();
+            }
+          }
+        });
+        return false;
+      } else {
+        return false;
+      }
     },
 
     // Helper function which checks for blank inputs in a form that match the specified CSS selector
